@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Big Timer Pro - Online</title>
+    <style>
+        :root {
+            --bg-start: #0a0a0a;
+            --bg-run: #050505;
+            --bg-pause: #1a0505;
+            --font-main: #ffffff;
+            --font-lap: #00FF00;
+            --font-header: #888888;
+            --num-size: 120px;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-start);
+            color: white;
+            font-family: 'Helvetica', sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transition: background-color 0.3s;
+        }
+
+        /* Top Bar Settings */
+        .top-bar {
+            padding: 15px 25px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            z-index: 10;
+        }
+
+        .input-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        input {
+            background: #222;
+            border: none;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            outline: none;
+        }
+
+        .theme-btn {
+            margin-left: auto;
+            background: #333;
+            border: none;
+            cursor: pointer;
+            font-size: 18px;
+            padding: 5px 10px;
+            border-radius: 5px;
+        }
+
+        /* Main Display */
+        .display-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+
+        #header-label {
+            font-size: 35px;
+            font-style: italic;
+            color: var(--font-header);
+            margin-bottom: -10px;
+            text-transform: uppercase;
+        }
+
+        #main-timer {
+            font-size: var(--num-size);
+            font-weight: bold;
+            color: var(--font-lap); /* Starts Green */
+        }
+
+        /* Lap and Footer */
+        .lap-container {
+            position: absolute;
+            bottom: 50px;
+            left: 30px;
+            font-family: 'Consolas', monospace;
+            color: var(--font-lap);
+            line-height: 1.4;
+        }
+
+        .info-footer {
+            text-align: center;
+            padding-bottom: 10px;
+            font-size: 12px;
+            color: #444;
+            font-weight: bold;
+        }
+
+        /* Color Picker Modal */
+        #theme-menu {
+            display: none;
+            position: fixed;
+            top: 60px;
+            right: 20px;
+            background: #222;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .color-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 15px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="top-bar" id="top-bar">
+        <div class="input-group">
+            TEXT: <input type="text" id="task-input" value="REVISION">
+        </div>
+        <div class="input-group">
+            NUM SIZE: <input type="number" id="size-input" value="120" style="width: 50px;">
+        </div>
+        <button class="theme-btn" onclick="toggleThemeMenu()">🎨</button>
+    </div>
+
+    <div id="theme-menu">
+        <div class="color-row">Start BG <input type="color" id="color-bg_start" value="#0a0a0a"></div>
+        <div class="color-row">Run BG <input type="color" id="color-bg_run" value="#050505"></div>
+        <div class="color-row">Pause BG <input type="color" id="color-bg_pause" value="#1a0505"></div>
+        <div class="color-row">Number <input type="color" id="color-font_main" value="#ffffff"></div>
+        <div class="color-row">Lap/Ready <input type="color" id="color-font_lap" value="#00ff00"></div>
+        <div class="color-row">Header <input type="color" id="color-font_header" value="#888888"></div>
+    </div>
+
+    <div class="display-container">
+        <div id="header-label">REVISION</div>
+        <div id="main-timer">READY?</div>
+    </div>
+
+    <div class="lap-container" id="lap-list"></div>
+
+    <div class="info-footer">
+        [A] START | [SPACE] PAUSE | [L] LAP
+    </div>
+
+    <script>
+        let seconds = 0;
+        let totalSeconds = 0;
+        let paused = true;
+        let started = false;
+        let laps = [];
+        let timerInterval = null;
+
+        const body = document.body;
+        const mainTimer = document.getElementById('main-timer');
+        const headerLabel = document.getElementById('header-label');
+        const lapList = document.getElementById('lap-list');
+        const taskInput = document.getElementById('task-input');
+        const sizeInput = document.getElementById('size-input');
+
+        // Initial UI Setup
+        function refreshUI() {
+            const getCol = (id) => document.getElementById('color-' + id).value;
+            
+            let currentBg = getCol('bg_start');
+            if (started) {
+                currentBg = paused ? getCol('bg_pause') : getCol('bg_run');
+            }
+
+            body.style.backgroundColor = currentBg;
+            headerLabel.style.color = getCol('font_header');
+            
+            if (!started) {
+                mainTimer.style.color = getCol('font_lap');
+            } else {
+                mainTimer.style.color = paused ? 'red' : getCol('font_main');
+            }
+
+            document.documentElement.style.setProperty('--num-size', sizeInput.value + 'px');
+            lapList.style.color = getCol('font_lap');
+        }
+
+        // Timer Logic
+        function updateDisplay() {
+            if (!started) return;
+            let m = Math.floor(seconds / 60);
+            let s = seconds % 60;
+            mainTimer.innerText = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        }
+
+        function startTimer() {
+            if (!started) {
+                started = true;
+                paused = false;
+                refreshUI();
+                if (!timerInterval) {
+                    timerInterval = setInterval(() => {
+                        if (!paused) {
+                            seconds++;
+                            totalSeconds++;
+                            updateDisplay();
+                        }
+                    }, 1000);
+                }
+            }
+        }
+
+        function togglePause() {
+            if (!started) return;
+            paused = !paused;
+            refreshUI();
+        }
+
+        function recordLap() {
+            if (!started) return;
+            let lm = Math.floor(seconds / 60), ls = seconds % 60;
+            let tm = Math.floor(totalSeconds / 60), ts = totalSeconds % 60;
+            
+            const lapText = `Lap ${laps.length + 1}: ${lm.toString().padStart(2, '0')}:${ls.toString().padStart(2, '0')} (Total: ${tm.toString().padStart(2, '0')}:${ts.toString().padStart(2, '0')})`;
+            laps.push(lapText);
+            
+            lapList.innerHTML = laps.slice(-5).join('<br>');
+            seconds = 0;
+            updateDisplay();
+        }
+
+        // Event Listeners
+        taskInput.addEventListener('input', () => {
+            headerLabel.innerText = taskInput.value.toUpperCase();
+        });
+
+        sizeInput.addEventListener('input', refreshUI);
+
+        document.querySelectorAll('input[type="color"]').forEach(picker => {
+            picker.addEventListener('input', refreshUI);
+        });
+
+        window.addEventListener('keydown', (e) => {
+            if (document.activeElement.tagName === 'INPUT') {
+                if (e.key === "Enter" || e.key === "Escape") document.activeElement.blur();
+                return;
+            }
+
+            const key = e.key.toLowerCase();
+            if (key === 'a') startTimer();
+            if (e.code === 'Space') { e.preventDefault(); togglePause(); }
+            if (key === 'l') recordLap();
+        });
+
+        function toggleThemeMenu() {
+            const menu = document.getElementById('theme-menu');
+            menu.style.display = (menu.style.display === 'flex') ? 'none' : 'flex';
+        }
+
+        // Clicking background blurs inputs
+        window.addEventListener('mousedown', (e) => {
+            if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'BUTTON') {
+                document.activeElement.blur();
+                document.getElementById('theme-menu').style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>
